@@ -57,7 +57,6 @@ readonly class RequestDtoSubscriber implements EventSubscriberInterface
         if (!$opAttr) {
             return;
         }
-        dump($opAttr);
         $op = $opAttr->newInstance();
 
         // collect method-level responses (for profiler; optional here)
@@ -65,15 +64,12 @@ readonly class RequestDtoSubscriber implements EventSubscriberInterface
             static fn($a) => $a->newInstance(),
             $rm->getAttributes(DtoApiResponse::class, ReflectionAttribute::IS_INSTANCEOF)
         );
-        dump($responses);
         $req = $event->getRequest();
 
         $methodLevel = array_map(fn($a) => (array)$a, $responses);
         $opLevel     = is_array($op->response) ? $op->response : (array)$op->response;
-        dump($opLevel);
 
         $resolvedResponses = $this->responseMappingResolver->resolve($methodLevel, $opLevel);
-        dump($resolvedResponses);
 
         $req->attributes->set('_dtoapi.meta', [
             'controller' => $rc->getName(),

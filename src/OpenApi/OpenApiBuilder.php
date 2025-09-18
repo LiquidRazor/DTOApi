@@ -122,9 +122,6 @@ final readonly class OpenApiBuilder
             ];
         }
 
-//        // Response from method-level DtoApiResponse (Option B)
-//        $responses =
-
         $methodLevel = array_map(
             static fn($a) => $a->newInstance(),
             $rm->getAttributes(DtoApiResponse::class, ReflectionAttribute::IS_INSTANCEOF)
@@ -133,22 +130,6 @@ final readonly class OpenApiBuilder
 
         $responses = $this->responseMappingResolver->resolve($methodLevel, $opLevel);
 
-//        // Fallback to operation.response/classes if not declared
-//        if ($responses === [] && $op->response !== null) {
-//            $classes = is_array($op->response) ? $op->response : [$op->response];
-//
-//            $statuses = $op->status ?: [200];
-//            foreach ($classes as $cls) {
-//                foreach ($statuses as $st) {
-//                    $responses[] = new DtoApiResponse(
-//                        status: (int)$st,
-//                        class: is_string($cls) ? $cls : null
-//                    );
-//                }
-//            }
-//        }
-
-        // Build responses section
         $respObj = [];
         foreach ($responses as $r) {
             $status = (string)$r['status'];
