@@ -5,12 +5,9 @@
 
 ---
 
-## 📛 Badges (enable after publishing)
-<!--
 [![Latest Stable Version](https://poser.pugx.org/liquidrazor/dto-api-bundle/v/stable)](https://packagist.org/packages/liquidrazor/dto-api-bundle)
 [![Total Downloads](https://poser.pugx.org/liquidrazor/dto-api-bundle/downloads)](https://packagist.org/packages/liquidrazor/dto-api-bundle)
-[![License](https://poser.pugx.org/liquidrazor/dto-api-bundle/license)](LICENSE)
--->
+[![License](https://poser.pugx.org/liquidrazor/dto-api-bundle/license)](LICENCE)
 
 ---
 
