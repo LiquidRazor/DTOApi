@@ -29,6 +29,9 @@
     "symfony/twig-bridge": "^7",
     "symfony/web-profiler-bundle": "^7"
   },
+  "conflict": {
+    "nelmio/api-doc-bundle": "*"
+  },
   "autoload": {
     "psr-4": {
       "LiquidRazor\\DtoApiBundle\\": "src/"
