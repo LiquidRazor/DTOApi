@@ -3,6 +3,7 @@ name: Enforce repo settings
 on:
     push:
         paths:
+            - '.github/CODEOWNERS'
             - '.github/settings.yml'
             - '.github/workflows/repo-settings.yml'
     workflow_dispatch:
