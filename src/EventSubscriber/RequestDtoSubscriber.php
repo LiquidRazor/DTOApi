@@ -104,9 +104,16 @@ readonly class RequestDtoSubscriber implements EventSubscriberInterface
             return;
         }
 
+        if ($content === '' && $req->getMethod() === Request::METHOD_GET) {
+            $content = $req->query->all();
+        }
+
         $format = 'json';
         try {
-            $dto = $this->serializer->deserialize($content, $dtoClass, $format);
+            $dto = match (true) {
+                \is_string($content) => $this->serializer->deserialize($content, $dtoClass, $format),
+                \is_array($content) => $this->serializer->denormalize($content, $dtoClass, $format),
+            };
             $validationErrors = $this->validator->validate($dto);
 
             if (count($validationErrors) > 0) {
