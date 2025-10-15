@@ -3,26 +3,25 @@ declare(strict_types=1);
 
 namespace LiquidRazor\DtoApiBundle\EventSubscriber;
 
+use JsonException;
+use LiquidRazor\DtoApiBundle\Includes\Contracts\ResponseDTO;
+use LiquidRazor\DtoApiBundle\Lib\Normalizer\PreDtoNormalizer;
 use LiquidRazor\DtoApiBundle\Lib\Streaming\NdjsonStreamer;
 use LiquidRazor\DtoApiBundle\Lib\Streaming\SseStreamer;
+use LogicException;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 use Symfony\Component\HttpKernel\Event\ViewEvent;
 use Symfony\Component\HttpKernel\KernelEvents;
 use Symfony\Component\Serializer\Exception\ExceptionInterface;
 use Symfony\Component\Serializer\SerializerInterface;
 use Symfony\Component\Validator\ConstraintViolation;
-use Symfony\Component\Validator\ConstraintViolationInterface;
-use Symfony\Component\Validator\ConstraintViolationListInterface;
-use Symfony\Component\Validator\Validator\ValidatorInterface;
 
 final readonly class ResponseDtoSubscriber implements EventSubscriberInterface
 {
     public function __construct(
         private SerializerInterface $serializer,
-        private ValidatorInterface  $validator,
         private SseStreamer         $sseStreamer,
         private NdjsonStreamer      $ndjsonStreamer,
     )
@@ -37,6 +36,7 @@ final readonly class ResponseDtoSubscriber implements EventSubscriberInterface
 
     /**
      * @throws ExceptionInterface
+     * @throws JsonException
      */
     public function onView(ViewEvent $event): void
     {
@@ -65,7 +65,7 @@ final readonly class ResponseDtoSubscriber implements EventSubscriberInterface
         $mapping = $this->pickResponseMapping($meta['responses'] ?? [], $result);
 
         if (!empty($mapping['stream'])) {
-            // streaming expects an iterable; allow single object and wrap it
+            // streaming expects an iterable object; allow a single object and wrap it
             $iterable = is_iterable($result) ? $result : [$result];
 
             $ct = $mapping['contentType'] ?? 'application/x-ndjson';
@@ -83,11 +83,11 @@ final readonly class ResponseDtoSubscriber implements EventSubscriberInterface
         }
 
         $request->attributes->set('_dtoapi.response_selected', [
-            'status'      => $mapping['status'] ?? 200,
+            'status' => $mapping['status'] ?? 200,
             'contentType' => $mapping['contentType'] ?? 'application/json',
-            'stream'      => (bool)($mapping['stream'] ?? false),
-            'class'       => $mapping['class'] ?? null,
-            'source'      => 'view',           // mark where it was chosen
+            'stream' => (bool)($mapping['stream'] ?? false),
+            'class' => $mapping['class'] ?? null,
+            'source' => 'view',           // mark where it was chosen
         ]);
 
         // 2) No body (e.g., 204)
@@ -96,31 +96,39 @@ final readonly class ResponseDtoSubscriber implements EventSubscriberInterface
             return;
         }
 
-        // 3) DTO object → validate & serialize
-        if (is_object($result)) {
-            $violations = $this->validator->validate($result);
-            if (count($violations) > 0) {
-                $payload = $this->buildResponseViolationPayload($violations);
-                $json = $this->serializer->serialize($payload, 'json');
-                $event->setResponse(new Response($json, 500, ['Content-Type' => 'application/json']));
-                return;
-            }
+        $mappingClass = $mapping['class'] ?? null;
 
-            if (!empty($mapping['stream'])) {
-                $event->setResponse(new StreamedResponse(function () use ($result) {
-                    // naive NDJSON; refine later
-                    echo $this->serializer->serialize($result, 'json') . "\n";
-                    flush();
-                }, $mapping['status'] ?? 200, [
-                    'Content-Type' => $mapping['contentType'] ?? 'application/x-ndjson'
-                ]));
-                return;
-            }
-
-            $format = ($mapping['contentType'] ?? 'application/json');
-            $body = $this->serializer->serialize($result, 'json');
-            $event->setResponse(new Response($body, $mapping['status'] ?? 200, ['Content-Type' => $format]));
+        if ($mappingClass === null) {
+            $pre = (new PreDtoNormalizer([
+                'asStdClass' => true,
+                'deep' => true,
+                'maxDepth' => 8,
+            ]))->normalize($result);
+            $json = $this->serializer->serialize($pre, 'json');
+            $event->setResponse(new Response($json, $mapping['status'] ?? 200, [
+                'Content-Type' => $mapping['contentType'] ?? 'application/json'
+            ]));
+            return;
         }
+
+        if (class_exists($mappingClass) && method_exists($mappingClass, 'customTransform')) {
+            $mapper = new $mappingClass();
+            $payload = $mapper->customTransform($request);
+            $json = $this->serializer->serialize($payload, 'json');
+            $event->setResponse(new Response($json, $mapping['status'] ?? 200, [
+                'Content-Type' => $mapping['contentType'] ?? 'application/json'
+            ]));
+            return;
+        }
+
+        if (!is_subclass_of($mappingClass, ResponseDto::class)) {
+            throw new LogicException("DTO class '$mappingClass' must implement ResponseDto.");
+        }
+
+        $json = $this->serializer->serialize($mappingClass::fromControllerResponse($result), 'json');
+        $event->setResponse(new Response($json, $mapping['status'] ?? 200, [
+            'Content-Type' => $mapping['contentType'] ?? 'application/json'
+        ]));
     }
 
     private function buildRequestErrorPayload(Request $request): array
@@ -156,18 +164,5 @@ final readonly class ResponseDtoSubscriber implements EventSubscriberInterface
             }
         }
         return $responses[0] ?? ['status' => 200, 'contentType' => 'application/json'];
-    }
-
-    private function buildResponseViolationPayload(ConstraintViolationListInterface $violations): array
-    {
-        return [
-            'type' => 'about:blank',
-            'title' => 'Response validation failed.',
-            'status' => 422,
-            'violations' => array_map(
-                fn(ConstraintViolationInterface $violation) => ['property' => $violation->getPropertyPath(), 'message' => $violation->getMessage()],
-                iterator_to_array($violations)
-            ),
-        ];
     }
 }
