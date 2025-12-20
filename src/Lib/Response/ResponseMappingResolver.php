@@ -26,7 +26,6 @@ final readonly class ResponseMappingResolver
     {
         $out = [];
 
-        // 1) method-level: already fully specified
         foreach ($methodLevel as $m) {
             if($m instanceof DtoApiResponse) {
                 $m = [

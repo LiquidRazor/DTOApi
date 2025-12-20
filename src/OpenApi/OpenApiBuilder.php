@@ -132,26 +132,29 @@ final readonly class OpenApiBuilder
 
         $respObj = [];
         foreach ($responses as $r) {
-            $status = (string)$r['status'];
+            if(is_array($r)) {
+                $r = (object)$r;
+            }
+            $status = $r->status;
             $desc = $r->description ?? ($r->name ?? '');
             $contentType = $r->contentType ?? 'application/json';
 
             $content = [];
-            if ($r['class']) {
-                $this->registry->ensure($r['class']);
-                $schemaName = $this->schemas->schemaName($r['class']);
-                $components['schemas']->{$schemaName} ??= $this->schemas->build($r['class']);
+            if ($r->class) {
+                $this->registry->ensure($r->class);
+                $schemaName = $this->schemas->schemaName($r->class);
+                $components['schemas']->{$schemaName} ??= $this->schemas->build($r->class);
                 $content[$contentType] = [
                     'schema' => ['$ref' => '#/components/schemas/'.$schemaName]
                 ];
             }
 
             // streaming hint
-            if ($r['stream'] && $contentType === 'application/json') {
+            if ($r->stream && $contentType === 'application/json') {
                 $contentType = 'application/x-ndjson';
             }
 
-            $resp = ['description' => $desc ?: Response::$statusTexts[$r['status']]];
+            $resp = ['description' => $desc ?: Response::$statusTexts[$r->status]];
             if ($content !== []) {
                 $resp['content'] = $content;
             }
