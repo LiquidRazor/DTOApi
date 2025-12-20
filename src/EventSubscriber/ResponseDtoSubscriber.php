@@ -113,8 +113,8 @@ final readonly class ResponseDtoSubscriber implements EventSubscriberInterface
             return;
         }
 
-        if (!is_subclass_of($mappingClass, ResponseDto::class)) {
-            throw new LogicException("DTO class '$mappingClass' must implement ResponseDto.");
+        if (!is_subclass_of($mappingClass, ResponseDTO::class)) {
+            throw new LogicException("DTO class '$mappingClass' must implement ResponseDTO.");
         }
 
         $json = $this->serializer->serialize($mappingClass::fromControllerResponse($result), 'json');
