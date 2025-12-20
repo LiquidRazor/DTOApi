@@ -9,6 +9,7 @@ use LiquidRazor\DtoApiBundle\Lib\Normalizer\PreDtoNormalizer;
 use LiquidRazor\DtoApiBundle\Lib\Streaming\NdjsonStreamer;
 use LiquidRazor\DtoApiBundle\Lib\Streaming\SseStreamer;
 use LogicException;
+use Psr\Container\ContainerInterface;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Event\ViewEvent;
@@ -21,7 +22,7 @@ final readonly class ResponseDtoSubscriber implements EventSubscriberInterface
     public function __construct(
         private SerializerInterface $serializer,
         private SseStreamer         $sseStreamer,
-        private NdjsonStreamer      $ndjsonStreamer,
+        private NdjsonStreamer      $ndjsonStreamer
     )
     {
     }
@@ -95,16 +96,6 @@ final readonly class ResponseDtoSubscriber implements EventSubscriberInterface
                 'maxDepth' => 8,
             ]))->normalize($result);
             $json = $this->serializer->serialize($pre, 'json');
-            $event->setResponse(new Response($json, $mapping['status'] ?? 200, [
-                'Content-Type' => $mapping['contentType'] ?? 'application/json'
-            ]));
-            return;
-        }
-
-        if (class_exists($mappingClass) && method_exists($mappingClass, 'customTransform')) {
-            $mapper = new $mappingClass();
-            $payload = $mapper->customTransform($request);
-            $json = $this->serializer->serialize($payload, 'json');
             $event->setResponse(new Response($json, $mapping['status'] ?? 200, [
                 'Content-Type' => $mapping['contentType'] ?? 'application/json'
             ]));

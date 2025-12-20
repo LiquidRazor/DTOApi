@@ -134,13 +134,6 @@ readonly class RequestDtoSubscriber implements EventSubscriberInterface
     private function hydrateRequestDto(Request $req, string $dtoClass): void
     {
         $content = $req->getContent();
-        if ($content === '' && $req->getMethod() !== Request::METHOD_GET) {
-            $req->attributes->set('_dtoapi.request_error', [
-                'class' => 'EmptyBodyException',
-                'message' => 'Request body cannot be empty.',
-            ]);
-            return;
-        }
 
         if ($content === '' && $req->getMethod() === Request::METHOD_GET) {
             $content = $req->query->all();
@@ -148,10 +141,15 @@ readonly class RequestDtoSubscriber implements EventSubscriberInterface
 
         $format = $this->resolveFormat($req, $dtoClass);
 
+        if ($format === 'form') {
+            $content = $req->request->all();
+        }
+
         try {
             $dto = match (true) {
-                is_string($content) => $this->serializer->deserialize($content, $dtoClass, $format),
-                is_array($content) => $this->serializer->denormalize($content, $dtoClass, $format),
+                is_array($content) => $this->serializer->denormalize($content, $dtoClass, $format === 'form' ? null : $format),
+                is_string($content) && $content !== '' => $this->serializer->deserialize($content, $dtoClass, $format),
+                default => $this->serializer->denormalize([], $dtoClass, $format),
             };
             $validationErrors = $this->validator->validate($dto);
 

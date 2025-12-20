@@ -21,6 +21,8 @@ use LiquidRazor\DtoApiBundle\Validation\DtoApiConstraintLoader;
 use LiquidRazor\DtoApiBundle\Validation\PropertyConstraintMapper;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
 
+use function Symfony\Component\DependencyInjection\Loader\Configurator\service;
+
 return static function (ContainerConfigurator $config): void {
     $services = $config->services()
         ->defaults()
