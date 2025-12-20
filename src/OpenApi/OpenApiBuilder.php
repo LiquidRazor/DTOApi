@@ -132,30 +132,33 @@ final readonly class OpenApiBuilder
 
         $respObj = [];
         foreach ($responses as $r) {
-            $status = (string)$r['status'];
-            $desc = $r->description ?? ($r->name ?? '');
-            $contentType = $r->contentType ?? 'application/json';
+            $status      = (string) $r['status'];
+            $desc        = $r['description'] ?? ($r['name'] ?? '');
+            $contentType = $r['contentType'] ?? 'application/json';
+            $isStream    = !empty($r['stream']);
+            $mediaType   = ($isStream && $contentType === 'application/json')
+                ? 'application/x-ndjson'
+                : $contentType;
 
             $content = [];
-            if ($r['class']) {
+            if ($mediaType) {
+                $content[$mediaType] = [];
+            }
+
+            if (!empty($r['class'])) {
                 $this->registry->ensure($r['class']);
                 $schemaName = $this->schemas->schemaName($r['class']);
                 $components['schemas']->{$schemaName} ??= $this->schemas->build($r['class']);
-                $content[$contentType] = [
-                    'schema' => ['$ref' => '#/components/schemas/'.$schemaName]
-                ];
-            }
 
-            // streaming hint
-            if ($r['stream'] && $contentType === 'application/json') {
-                $contentType = 'application/x-ndjson';
+                if ($mediaType) {
+                    $content[$mediaType]['schema'] = ['$ref' => '#/components/schemas/'.$schemaName];
+                }
             }
 
             $resp = ['description' => $desc ?: Response::$statusTexts[$r['status']]];
             if ($content !== []) {
                 $resp['content'] = $content;
             }
-            $resp['content-type'] = $contentType;
 
             $respObj[$status] = $resp;
         }
