@@ -4,28 +4,30 @@ declare(strict_types=1);
 
 namespace LiquidRazor\DtoApiBundle\OpenApi;
 
-use LiquidRazor\DtoApiBundle\Lib\Attributes\{DtoApi, DtoApiOperation, DtoApiResponse, DtoApiRequest};
 use JsonException;
-use LiquidRazor\DtoApiBundle\OpenApi\Schema\{DtoSchemaFactory, DtoSchemaRegistry};
+use LiquidRazor\DtoApiBundle\Lib\Attributes\{DtoApi, DtoApiOperation, DtoApiRequest, DtoApiResponse};
 use LiquidRazor\DtoApiBundle\Lib\Response\ResponseMappingResolver;
+use LiquidRazor\DtoApiBundle\OpenApi\Schema\{DtoSchemaFactory, DtoSchemaRegistry};
 use ReflectionAttribute;
 use ReflectionClass;
 use ReflectionException;
 use ReflectionMethod;
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\Routing\RouterInterface;
 use Symfony\Component\Routing\Route;
+use Symfony\Component\Routing\RouterInterface;
 
 final readonly class OpenApiBuilder
 {
     public function __construct(
-        private RouterInterface  $router,
-        private DtoSchemaFactory $schemas,
-        private DtoSchemaRegistry $registry,
+        private RouterInterface         $router,
+        private DtoSchemaFactory        $schemas,
+        private DtoSchemaRegistry       $registry,
         private ResponseMappingResolver $responseMappingResolver,
-        private string           $title = 'API',
-        private string           $version = '0.1.0',
-    ) {}
+        private string                  $title = 'API',
+        private string                  $version = '0.1.0',
+    )
+    {
+    }
 
     /** Build the full OpenAPI 3.1 document as an array
      * @throws ReflectionException|JsonException
@@ -79,6 +81,27 @@ final readonly class OpenApiBuilder
         ];
     }
 
+    private
+    function parseCallable(string $controller): array
+    {
+        // Formats: 'App\Controller\X::method' or invokable 'App\Controller\X'
+        if (str_contains($controller, '::')) {
+            return explode('::', $controller, 2);
+        }
+        if (class_exists($controller)) {
+            return [$controller, '__invoke'];
+        }
+        return [null, null];
+    }
+
+    private
+    function toOpenApiPath(Route $route): string
+    {
+        // Convert /users/{id} style – Symfony routes already use {}
+        $path = $route->getPath();
+        return $path === '' ? '/' : $path;
+    }
+
     /**
      * @throws ReflectionException
      * @throws JsonException
@@ -91,13 +114,13 @@ final readonly class OpenApiBuilder
 
         $tags[$tagName] ??= ['name' => $tagName];
 
-        $operationId = $rc->getShortName().'::'.$rm->getName();
+        $operationId = $rc->getShortName() . '::' . $rm->getName();
 
         $out = [
             'operationId' => $operationId,
-            'summary'     => $op->summary,
+            'summary' => $op->summary,
             'description' => $op->description,
-            'tags'        => [$tagName]
+            'tags' => [$tagName]
         ];
 
         // Request body
@@ -110,13 +133,15 @@ final readonly class OpenApiBuilder
             $reqMeta = (new ReflectionClass($op->request))->getAttributes(DtoApiRequest::class)[0] ?? null;
             if ($reqMeta) {
                 $ct = $reqMeta->newInstance()->contentType ?? null;
-                if ($ct) { $contentType = $ct; }
+                if ($ct) {
+                    $contentType = $ct;
+                }
             }
             $out['requestBody'] = [
                 'required' => true, // you can refine by checking properties marked required
                 'content' => [
                     $contentType => [
-                        'schema' => ['$ref' => '#/components/schemas/'.$schemaName]
+                        'schema' => ['$ref' => '#/components/schemas/' . $schemaName]
                     ]
                 ]
             ];
@@ -125,22 +150,24 @@ final readonly class OpenApiBuilder
         $methodLevel = array_map(
             static fn($a) => $a->newInstance(),
             $rm->getAttributes(DtoApiResponse::class, ReflectionAttribute::IS_INSTANCEOF)
-        );;
-        $opLevel     = is_array($op->response) ? $op->response : (array)$op->response;
+        );
+        $opLevel = is_array($op->response) ? $op->response : (array)$op->response;
 
         $responses = $this->responseMappingResolver->resolve($methodLevel, $opLevel);
 
         $respObj = [];
         foreach ($responses as $r) {
-            $status      = (string) $r['status'];
-            $desc        = $r['description'] ?? ($r['name'] ?? '');
+            if (is_array($r)) {
+                $r = (object)$r;
+            }
+            $status = $r->status;
+            $desc = $r->description ?? ($r->name ?? '');
             $contentType = $r['contentType'] ?? 'application/json';
-            $isStream    = !empty($r['stream']);
-            $mediaType   = ($isStream && $contentType === 'application/json')
+            $isStream = !empty($r['stream']);
+            $mediaType = ($isStream && $contentType === 'application/json')
                 ? 'application/x-ndjson'
                 : $contentType;
 
-            $content = [];
             if ($mediaType) {
                 $content[$mediaType] = [];
             }
@@ -151,64 +178,41 @@ final readonly class OpenApiBuilder
                 $components['schemas']->{$schemaName} ??= $this->schemas->build($r['class']);
 
                 if ($mediaType) {
-                    $content[$mediaType]['schema'] = ['$ref' => '#/components/schemas/'.$schemaName];
+                    $content[$mediaType]['schema'] = ['$ref' => '#/components/schemas/' . $schemaName];
                 }
-            if(is_array($r)) {
-                $r = (object)$r;
-            }
-            $status = $r->status;
-            $desc = $r->description ?? ($r->name ?? '');
-            $contentType = $r->contentType ?? 'application/json';
 
-            $content = [];
-            if ($r->class) {
-                $this->registry->ensure($r->class);
-                $schemaName = $this->schemas->schemaName($r->class);
-                $components['schemas']->{$schemaName} ??= $this->schemas->build($r->class);
-                $content[$contentType] = [
-                    'schema' => ['$ref' => '#/components/schemas/'.$schemaName]
-                ];
+                $contentType = $r->contentType ?? 'application/json';
+
+                // streaming hint
+                if ($r->stream && $contentType === 'application/json') {
+                    $contentType = 'application/x-ndjson';
+                }
+
+                $content = [];
+                if ($r->class) {
+                    $this->registry->ensure($r->class);
+                    $schemaName = $this->schemas->schemaName($r->class);
+                    $components['schemas']->{$schemaName} ??= $this->schemas->build($r->class);
+                    $content[$contentType] = [
+                        'schema' => ['$ref' => '#/components/schemas/' . $schemaName]
+                    ];
+                }
+
+                $resp = ['description' => $desc ?: Response::$statusTexts[$r->status]];
+                if ($content !== []) {
+                    $resp['content'] = $content;
+                }
+
+                $respObj[$status] = $resp;
             }
 
-            // streaming hint
-            if ($r->stream && $contentType === 'application/json') {
-                $contentType = 'application/x-ndjson';
+            // Ensure at least a generic 200 if nothing found
+            if ($respObj === []) {
+                $respObj['200'] = ['description' => 'OK'];
             }
-
-            $resp = ['description' => $desc ?: Response::$statusTexts[$r->status]];
-            if ($content !== []) {
-                $resp['content'] = $content;
-            }
-
-            $respObj[$status] = $resp;
         }
-
-        // Ensure at least a generic 200 if nothing found
-        if ($respObj === []) {
-            $respObj['200'] = ['description' => 'OK'];
-        }
-
         $out['responses'] = $this->objectify($respObj);
         return $out;
-    }
-
-    private function toOpenApiPath(Route $route): string
-    {
-        // Convert /users/{id} style – Symfony routes already use {}
-        $path = $route->getPath();
-        return $path === '' ? '/' : $path;
-    }
-
-    private function parseCallable(string $controller): array
-    {
-        // Formats: 'App\Controller\X::method' or invokable 'App\Controller\X'
-        if (str_contains($controller, '::')) {
-            return explode('::', $controller, 2);
-        }
-        if (class_exists($controller)) {
-            return [$controller, '__invoke'];
-        }
-        return [null, null];
     }
 
     /**
