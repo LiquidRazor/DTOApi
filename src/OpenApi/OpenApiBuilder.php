@@ -132,6 +132,27 @@ final readonly class OpenApiBuilder
 
         $respObj = [];
         foreach ($responses as $r) {
+            $status      = (string) $r['status'];
+            $desc        = $r['description'] ?? ($r['name'] ?? '');
+            $contentType = $r['contentType'] ?? 'application/json';
+            $isStream    = !empty($r['stream']);
+            $mediaType   = ($isStream && $contentType === 'application/json')
+                ? 'application/x-ndjson'
+                : $contentType;
+
+            $content = [];
+            if ($mediaType) {
+                $content[$mediaType] = [];
+            }
+
+            if (!empty($r['class'])) {
+                $this->registry->ensure($r['class']);
+                $schemaName = $this->schemas->schemaName($r['class']);
+                $components['schemas']->{$schemaName} ??= $this->schemas->build($r['class']);
+
+                if ($mediaType) {
+                    $content[$mediaType]['schema'] = ['$ref' => '#/components/schemas/'.$schemaName];
+                }
             if(is_array($r)) {
                 $r = (object)$r;
             }
@@ -158,7 +179,6 @@ final readonly class OpenApiBuilder
             if ($content !== []) {
                 $resp['content'] = $content;
             }
-            $resp['content-type'] = $contentType;
 
             $respObj[$status] = $resp;
         }
