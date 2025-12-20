@@ -98,12 +98,14 @@ readonly class RequestDtoSubscriber implements EventSubscriberInterface
             $this->hydrateRequestDto($req, $op->request);
         }
         if($req->attributes->get('_dtoapi.request_invalid')) {
+            $req->attributes->set('_dtoapi.response_selected', $this->selectResponseMapping($resolvedResponses, 422));
             $event->setController(fn() => new JsonResponse(
                 $this->buildValidationErrorPayload($req->attributes->get('_dtoapi.request_violations')),
                 422
             ));
         }
         if($req->attributes->get('_dtoapi.request_error')) {
+            $req->attributes->set('_dtoapi.response_selected', $this->selectResponseMapping($resolvedResponses, 400));
             $event->setController(fn() => new JsonResponse(
                 $this->buildRequestErrorPayload($req->attributes->get('_dtoapi.request_error')['message']),
                 400
@@ -168,6 +170,29 @@ readonly class RequestDtoSubscriber implements EventSubscriberInterface
             'title' => 'Malformed request body.',
             'status' => 400,
             'detail' => $message ?? 'Unknown error',
+        ];
+    }
+
+    private function selectResponseMapping(array $responses, int $status): array
+    {
+        foreach ($responses as $response) {
+            if (($response['status'] ?? null) === $status) {
+                return [
+                    'status' => $response['status'],
+                    'contentType' => $response['contentType'] ?? 'application/json',
+                    'stream' => false,
+                    'class' => null,
+                    'source' => 'controller',
+                ];
+            }
+        }
+
+        return [
+            'status' => $status,
+            'contentType' => 'application/json',
+            'stream' => false,
+            'class' => null,
+            'source' => 'controller',
         ];
     }
 }
