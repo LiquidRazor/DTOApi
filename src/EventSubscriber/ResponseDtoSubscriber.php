@@ -46,14 +46,6 @@ final readonly class ResponseDtoSubscriber implements EventSubscriberInterface
             return;
         }
 
-//        // 1) Convert invalid request into error response
-//        if ($request->attributes->get('_dtoapi.request_invalid') || $request->attributes->has('_dtoapi.request_error')) {
-//            $payload = $this->buildRequestErrorPayload($request);
-//            $json = $this->serializer->serialize($payload, 'json');
-//            $event->setResponse(new Response($json, 422, ['Content-Type' => 'application/json']));
-//            return;
-//        }
-
         $result = $event->getControllerResult();
 
         // If the controller returned a real Response, leave it alone.
@@ -130,31 +122,6 @@ final readonly class ResponseDtoSubscriber implements EventSubscriberInterface
             'Content-Type' => $mapping['contentType'] ?? 'application/json'
         ]));
     }
-
-//    private function buildRequestErrorPayload(Request $request): array
-//    {
-//        if ($validationErrors = $request->attributes->get('_dtoapi.request_violations')) {
-//            return [
-//                'type' => 'Validation error',
-//                'title' => 'Invalid request body.',
-//                'status' => 422,
-//                'violations' => array_map(
-//                    fn(ConstraintViolation $validationError) => [
-//                        'property' => $validationError->getPropertyPath(),
-//                        'message' => $validationError->getMessage()
-//                    ],
-//                    iterator_to_array($validationErrors)
-//                ),
-//            ];
-//        }
-//        $requestErrorData = $request->attributes->get('_dtoapi.request_error');
-//        return [
-//            'type' => 'about:blank',
-//            'title' => 'Malformed request body.',
-//            'status' => 400,
-//            'detail' => $requestErrorData['message'] ?? 'Unknown error',
-//        ];
-//    }
 
     private function pickResponseMapping(array $responses, mixed $result): array
     {
