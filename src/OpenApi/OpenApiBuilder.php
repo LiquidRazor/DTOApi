@@ -157,11 +157,10 @@ final readonly class OpenApiBuilder
 
         $respObj = [];
         foreach ($responses as $r) {
-            if (is_array($r)) {
-                $r = (object)$r;
-            }
-            $status = $r->status;
-            $desc = $r->description ?? ($r->name ?? '');
+            $r = is_array($r) ? $r : (array)$r;
+
+            $status = $r['status'];
+            $desc = $r['description'] ?? ($r['name'] ?? '');
             $contentType = $r['contentType'] ?? 'application/json';
             $isStream = !empty($r['stream']);
             $mediaType = ($isStream && $contentType === 'application/json')
@@ -184,21 +183,19 @@ final readonly class OpenApiBuilder
                 $contentType = $r->contentType ?? 'application/json';
 
                 // streaming hint
-                if ($r->stream && $contentType === 'application/json') {
+                if ($r['stream'] && $contentType === 'application/json') {
                     $contentType = 'application/x-ndjson';
                 }
 
                 $content = [];
-                if ($r->class) {
-                    $this->registry->ensure($r->class);
-                    $schemaName = $this->schemas->schemaName($r->class);
-                    $components['schemas']->{$schemaName} ??= $this->schemas->build($r->class);
-                    $content[$contentType] = [
-                        'schema' => ['$ref' => '#/components/schemas/' . $schemaName]
-                    ];
-                }
+                $this->registry->ensure($r['class']);
+                $schemaName = $this->schemas->schemaName($r['class']);
+                $components['schemas']->{$schemaName} ??= $this->schemas->build($r['class']);
+                $content[$contentType] = [
+                    'schema' => ['$ref' => '#/components/schemas/' . $schemaName]
+                ];
 
-                $resp = ['description' => $desc ?: Response::$statusTexts[$r->status]];
+                $resp = ['description' => $desc ?: Response::$statusTexts[$r['status']]];
                 if ($content !== []) {
                     $resp['content'] = $content;
                 }
