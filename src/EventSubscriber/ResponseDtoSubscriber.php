@@ -9,7 +9,6 @@ use LiquidRazor\DtoApiBundle\Lib\Normalizer\PreDtoNormalizer;
 use LiquidRazor\DtoApiBundle\Lib\Streaming\NdjsonStreamer;
 use LiquidRazor\DtoApiBundle\Lib\Streaming\SseStreamer;
 use LogicException;
-use Psr\Container\ContainerInterface;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Event\ViewEvent;
