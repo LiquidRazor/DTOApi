@@ -12,10 +12,13 @@ use ReflectionAttribute;
 use ReflectionClass;
 use ReflectionException;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
+use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Event\ControllerEvent;
 use Symfony\Component\HttpKernel\KernelEvents;
 use Symfony\Component\Serializer\SerializerInterface;
+use Symfony\Component\Validator\ConstraintViolation;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 use Throwable;
 
@@ -23,8 +26,8 @@ readonly class RequestDtoSubscriber implements EventSubscriberInterface
 {
 
     public function __construct(
-        private SerializerInterface $serializer,
-        private ValidatorInterface  $validator,
+        private SerializerInterface     $serializer,
+        private ValidatorInterface      $validator,
         private ResponseMappingResolver $responseMappingResolver,
     )
     {
@@ -67,7 +70,7 @@ readonly class RequestDtoSubscriber implements EventSubscriberInterface
         $req = $event->getRequest();
 
         $methodLevel = array_map(fn($a) => (array)$a, $responses);
-        $opLevel     = is_array($op->response) ? $op->response : (array)$op->response;
+        $opLevel = is_array($op->response) ? $op->response : (array)$op->response;
 
         $resolvedResponses = $this->responseMappingResolver->resolve($methodLevel, $opLevel);
 
@@ -94,6 +97,18 @@ readonly class RequestDtoSubscriber implements EventSubscriberInterface
         if (is_string($op->request) && class_exists($op->request)) {
             $this->hydrateRequestDto($req, $op->request);
         }
+        if($req->attributes->get('_dtoapi.request_invalid')) {
+            $event->setController(fn() => new JsonResponse(
+                $this->buildValidationErrorPayload($req->attributes->get('_dtoapi.request_violations')),
+                422
+            ));
+        }
+        if($req->attributes->get('_dtoapi.request_error')) {
+            $event->setController(fn() => new JsonResponse(
+                $this->buildRequestErrorPayload($req->attributes->get('_dtoapi.request_error')['message']),
+                400
+            ));
+        }
     }
 
     private function hydrateRequestDto(Request $req, string $dtoClass): void
@@ -111,15 +126,15 @@ readonly class RequestDtoSubscriber implements EventSubscriberInterface
         $format = 'json';
         try {
             $dto = match (true) {
-                \is_string($content) => $this->serializer->deserialize($content, $dtoClass, $format),
-                \is_array($content) => $this->serializer->denormalize($content, $dtoClass, $format),
+                is_string($content) => $this->serializer->deserialize($content, $dtoClass, $format),
+                is_array($content) => $this->serializer->denormalize($content, $dtoClass, $format),
             };
             $validationErrors = $this->validator->validate($dto);
 
             if (count($validationErrors) > 0) {
                 $req->attributes->set('_dtoapi.request_invalid', true);
-                // store simplified violations so the profiler template can render them
-                $req->attributes->set('_dtoapi.request_violations',iterator_to_array($validationErrors));
+                $req->attributes->set('_dtoapi.request_violations', iterator_to_array($validationErrors));
+
             }
             $req->attributes->set('_dtoapi.request_dto', $dto);
         } catch (Throwable $e) {
@@ -128,5 +143,31 @@ readonly class RequestDtoSubscriber implements EventSubscriberInterface
                 'message' => $e->getMessage(),
             ]);
         }
+    }
+
+    private function buildValidationErrorPayload(iterable $validationErrors): array
+    {
+        return [
+            'type' => 'Validation error',
+            'title' => 'Invalid request body.',
+            'status' => 422,
+            'violations' => array_map(
+                fn(ConstraintViolation $validationError) => [
+                    'property' => $validationError->getPropertyPath(),
+                    'message' => $validationError->getMessage()
+                ],
+                iterator_to_array($validationErrors)
+            ),
+        ];
+    }
+
+    private function buildRequestErrorPayload(?string $message): array
+    {
+        return [
+            'type' => 'about:blank',
+            'title' => 'Malformed request body.',
+            'status' => 400,
+            'detail' => $message ?? 'Unknown error',
+        ];
     }
 }
