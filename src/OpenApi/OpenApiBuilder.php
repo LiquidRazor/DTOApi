@@ -159,55 +159,43 @@ final readonly class OpenApiBuilder
         foreach ($responses as $r) {
             $r = is_array($r) ? $r : (array)$r;
 
-            $status = $r['status'];
+            $status = (string)$r['status'];
             $desc = $r['description'] ?? ($r['name'] ?? '');
+            if (!$desc) {
+                $desc = Response::$statusTexts[$status] ?? 'Response ' . $status;
+            }
+
+            $resp = ['description' => $desc];
+
+            $mappingClass = $r['class'] ?? null;
             $contentType = $r['contentType'] ?? 'application/json';
             $isStream = !empty($r['stream']);
-            $mediaType = ($isStream && $contentType === 'application/json')
-                ? 'application/x-ndjson'
-                : $contentType;
 
-            if ($mediaType) {
-                $content[$mediaType] = [];
+            if ($isStream && $contentType === 'application/json') {
+                $contentType = 'application/x-ndjson';
             }
 
-            if (!empty($r['class'])) {
-                $this->registry->ensure($r['class']);
-                $schemaName = $this->schemas->schemaName($r['class']);
-                $components['schemas']->{$schemaName} ??= $this->schemas->build($r['class']);
+            if ($mappingClass) {
+                $this->registry->ensure($mappingClass);
+                $schemaName = $this->schemas->schemaName($mappingClass);
+                $components['schemas']->{$schemaName} ??= $this->schemas->build($mappingClass);
 
-                if ($mediaType) {
-                    $content[$mediaType]['schema'] = ['$ref' => '#/components/schemas/' . $schemaName];
-                }
-
-                $contentType = $r->contentType ?? 'application/json';
-
-                // streaming hint
-                if ($r['stream'] && $contentType === 'application/json') {
-                    $contentType = 'application/x-ndjson';
-                }
-
-                $content = [];
-                $this->registry->ensure($r['class']);
-                $schemaName = $this->schemas->schemaName($r['class']);
-                $components['schemas']->{$schemaName} ??= $this->schemas->build($r['class']);
-                $content[$contentType] = [
+                $resp['content'][$contentType] = [
                     'schema' => ['$ref' => '#/components/schemas/' . $schemaName]
                 ];
-
-                $resp = ['description' => $desc ?: Response::$statusTexts[$r['status']]];
-                if ($content !== []) {
-                    $resp['content'] = $content;
+            } elseif ($status !== '204' && $status !== '202') {
+                // If class is null but it's not a "no content" status, we might still want to emit a schema
+                // if a contentType is declared.
+                if ($contentType) {
+                    $resp['content'][$contentType] = [
+                        'schema' => ['type' => 'object'] // Simple fallback
+                    ];
                 }
-
-                $respObj[$status] = $resp;
             }
 
-            // Ensure at least a generic 200 if nothing found
-            if ($respObj === []) {
-                $respObj['200'] = ['description' => 'OK'];
-            }
+            $respObj[$status] = $resp;
         }
+
         $out['responses'] = $this->objectify($respObj);
         return $out;
     }

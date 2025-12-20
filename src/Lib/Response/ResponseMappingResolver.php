@@ -37,11 +37,14 @@ final readonly class ResponseMappingResolver
                     'description' => $m->description,
                 ];
             }
+            $stream = (bool)($m['stream'] ?? false);
+            $contentType = $m['contentType'] ?? ($stream ? 'application/x-ndjson' : 'application/json');
+
             $out[(int)$m['status']] = [
                 'status'      => (int)$m['status'],
                 'class'       => $m['class'] ?? null,
-                'contentType' => $m['contentType'] ?? ($m['stream'] ? 'application/x-ndjson' : 'application/json'),
-                'stream'      => (bool)($m['stream'] ?? false),
+                'contentType' => $contentType,
+                'stream'      => $stream,
                 'name'        => $m['name'] ?? null,
                 'description' => $m['description'] ?? null,
             ];
@@ -88,11 +91,12 @@ final readonly class ResponseMappingResolver
         /** @var DtoApiResponse $r */
         $r = $attr->newInstance();
 
+        $stream = (bool)($r->stream ?? false);
         return [
             'status'      => ($r->status ?? 200),
             'class'       => $fqcn,
-            'contentType' => $r->contentType ?? ($r->stream ? 'application/x-ndjson' : 'application/json'),
-            'stream'      => $r->stream,
+            'contentType' => $r->contentType ?? ($stream ? 'application/x-ndjson' : 'application/json'),
+            'stream'      => $stream,
             'name'        => $r->name,
             'description' => $r->description,
         ];

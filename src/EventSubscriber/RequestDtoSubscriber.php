@@ -6,6 +6,7 @@ namespace LiquidRazor\DtoApiBundle\EventSubscriber;
 
 use LiquidRazor\DtoApiBundle\Lib\Attributes\DtoApi;
 use LiquidRazor\DtoApiBundle\Lib\Attributes\DtoApiOperation;
+use LiquidRazor\DtoApiBundle\Lib\Attributes\DtoApiRequest;
 use LiquidRazor\DtoApiBundle\Lib\Attributes\DtoApiResponse;
 use LiquidRazor\DtoApiBundle\Lib\Response\ResponseMappingResolver;
 use ReflectionAttribute;
@@ -44,17 +45,34 @@ readonly class RequestDtoSubscriber implements EventSubscriberInterface
     public function onController(ControllerEvent $event): void
     {
         $controller = $event->getController();
+        $obj = null;
+        $method = null;
+
         if (is_array($controller)) {
             [$obj, $method] = $controller;
         } elseif (is_object($controller) && method_exists($controller, '__invoke')) {
             $obj = $controller;
             $method = '__invoke';
-        } else {
+        } elseif (is_string($controller)) {
+            if (str_contains($controller, '::')) {
+                [$obj, $method] = explode('::', $controller);
+            } else {
+                $obj = $controller;
+                $method = '__invoke';
+            }
+        }
+
+        if (!$obj || !class_exists((string)(is_object($obj) ? $obj::class : $obj))) {
+            error_log(sprintf('DTOApi: Skipping unsupported controller shape: %s', is_scalar($controller) ? $controller : gettype($controller)));
             return;
         }
 
         $rc = new ReflectionClass($obj);
-        $rm = $rc->getMethod($method);
+        if (!$rc->hasMethod((string)$method)) {
+            error_log(sprintf('DTOApi: Controller %s has no method %s', $rc->getName(), $method));
+            return;
+        }
+        $rm = $rc->getMethod((string)$method);
 
         $opAttr = $rm->getAttributes(DtoApiOperation::class, ReflectionAttribute::IS_INSTANCEOF)[0] ?? null;
         if (!$opAttr) {
@@ -117,7 +135,10 @@ readonly class RequestDtoSubscriber implements EventSubscriberInterface
     {
         $content = $req->getContent();
         if ($content === '' && $req->getMethod() !== Request::METHOD_GET) {
-            $req->attributes->set('_dtoapi.request_empty', true);
+            $req->attributes->set('_dtoapi.request_error', [
+                'class' => 'EmptyBodyException',
+                'message' => 'Request body cannot be empty.',
+            ]);
             return;
         }
 
@@ -125,7 +146,8 @@ readonly class RequestDtoSubscriber implements EventSubscriberInterface
             $content = $req->query->all();
         }
 
-        $format = 'json';
+        $format = $this->resolveFormat($req, $dtoClass);
+
         try {
             $dto = match (true) {
                 is_string($content) => $this->serializer->deserialize($content, $dtoClass, $format),
@@ -145,6 +167,51 @@ readonly class RequestDtoSubscriber implements EventSubscriberInterface
                 'message' => $e->getMessage(),
             ]);
         }
+    }
+
+    private function resolveFormat(Request $req, string $dtoClass): string
+    {
+        // 1. Check DtoApiRequest attribute on the DTO class
+        try {
+            $rc = new ReflectionClass($dtoClass);
+            $attr = $rc->getAttributes(DtoApiRequest::class, ReflectionAttribute::IS_INSTANCEOF)[0] ?? null;
+            if ($attr) {
+                /** @var DtoApiRequest $instance */
+                $instance = $attr->newInstance();
+                if ($instance->contentType) {
+                    $format = $this->mapContentTypeToFormat($instance->contentType);
+                    if ($format) {
+                        return $format;
+                    }
+                }
+            }
+        } catch (ReflectionException) {
+        }
+
+        // 2. Check Request content type
+        $contentType = $req->headers->get('Content-Type');
+        if ($contentType) {
+            $format = $this->mapContentTypeToFormat($contentType);
+            if ($format) {
+                return $format;
+            }
+        }
+
+        // 3. Fallback to Request::getContentTypeFormat()
+        return $req->getContentTypeFormat() ?? 'json';
+    }
+
+    private function mapContentTypeToFormat(string $contentType): ?string
+    {
+        $parts = explode(';', $contentType);
+        $mimeType = strtolower(trim($parts[0]));
+
+        return match ($mimeType) {
+            'application/json' => 'json',
+            'application/x-www-form-urlencoded' => 'form',
+            'multipart/form-data' => 'form',
+            default => null,
+        };
     }
 
     private function buildValidationErrorPayload(iterable $validationErrors): array

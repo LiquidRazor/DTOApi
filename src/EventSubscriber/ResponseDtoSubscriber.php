@@ -10,13 +10,11 @@ use LiquidRazor\DtoApiBundle\Lib\Streaming\NdjsonStreamer;
 use LiquidRazor\DtoApiBundle\Lib\Streaming\SseStreamer;
 use LogicException;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
-use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Event\ViewEvent;
 use Symfony\Component\HttpKernel\KernelEvents;
 use Symfony\Component\Serializer\Exception\ExceptionInterface;
 use Symfony\Component\Serializer\SerializerInterface;
-use Symfony\Component\Validator\ConstraintViolation;
 
 final readonly class ResponseDtoSubscriber implements EventSubscriberInterface
 {
@@ -125,11 +123,30 @@ final readonly class ResponseDtoSubscriber implements EventSubscriberInterface
 
     private function pickResponseMapping(array $responses, mixed $result): array
     {
+        // 1. Exact class match
         foreach ($responses as $response) {
             if (!empty($response['class']) && is_object($result) && is_a($result, $response['class'])) {
                 return $response;
             }
         }
+
+        // 2. Explicit 2xx/3xx mapping (success/redirect)
+        foreach ($responses as $response) {
+            $status = (int)($response['status'] ?? 200);
+            if ($status >= 200 && $status < 400) {
+                return $response;
+            }
+        }
+
+        // 3. First non-error mapping (< 400) - redundant given step 2, but following instructions "first non-error mapping"
+        foreach ($responses as $response) {
+            $status = (int)($response['status'] ?? 200);
+            if ($status < 400) {
+                return $response;
+            }
+        }
+
+        // 4. Finally use the first declared mapping
         return $responses[0] ?? ['status' => 200, 'contentType' => 'application/json'];
     }
 }
