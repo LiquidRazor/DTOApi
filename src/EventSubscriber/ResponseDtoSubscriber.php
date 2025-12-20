@@ -46,13 +46,13 @@ final readonly class ResponseDtoSubscriber implements EventSubscriberInterface
             return;
         }
 
-        // 1) Convert invalid request into error response
-        if ($request->attributes->get('_dtoapi.request_invalid') || $request->attributes->has('_dtoapi.request_error')) {
-            $payload = $this->buildRequestErrorPayload($request);
-            $json = $this->serializer->serialize($payload, 'json');
-            $event->setResponse(new Response($json, 422, ['Content-Type' => 'application/json']));
-            return;
-        }
+//        // 1) Convert invalid request into error response
+//        if ($request->attributes->get('_dtoapi.request_invalid') || $request->attributes->has('_dtoapi.request_error')) {
+//            $payload = $this->buildRequestErrorPayload($request);
+//            $json = $this->serializer->serialize($payload, 'json');
+//            $event->setResponse(new Response($json, 422, ['Content-Type' => 'application/json']));
+//            return;
+//        }
 
         $result = $event->getControllerResult();
 
@@ -63,6 +63,14 @@ final readonly class ResponseDtoSubscriber implements EventSubscriberInterface
 
         // Find the best response mapping (Option B)
         $mapping = $this->pickResponseMapping($meta['responses'] ?? [], $result);
+
+        $request->attributes->set('_dtoapi.response_selected', [
+            'status' => $mapping['status'] ?? 200,
+            'contentType' => $mapping['contentType'] ?? 'application/json',
+            'stream' => (bool)($mapping['stream'] ?? false),
+            'class' => $mapping['class'] ?? null,
+            'source' => 'view',           // mark where it was chosen
+        ]);
 
         if (!empty($mapping['stream'])) {
             // streaming expects an iterable object; allow a single object and wrap it
@@ -81,14 +89,6 @@ final readonly class ResponseDtoSubscriber implements EventSubscriberInterface
             $event->setResponse($resp);
             return;
         }
-
-        $request->attributes->set('_dtoapi.response_selected', [
-            'status' => $mapping['status'] ?? 200,
-            'contentType' => $mapping['contentType'] ?? 'application/json',
-            'stream' => (bool)($mapping['stream'] ?? false),
-            'class' => $mapping['class'] ?? null,
-            'source' => 'view',           // mark where it was chosen
-        ]);
 
         // 2) No body (e.g., 204)
         if ($result === null && ($mapping['class'] ?? null) === null) {
@@ -131,30 +131,30 @@ final readonly class ResponseDtoSubscriber implements EventSubscriberInterface
         ]));
     }
 
-    private function buildRequestErrorPayload(Request $request): array
-    {
-        if ($validationErrors = $request->attributes->get('_dtoapi.request_violations')) {
-            return [
-                'type' => 'Validation error',
-                'title' => 'Invalid request body.',
-                'status' => 422,
-                'violations' => array_map(
-                    fn(ConstraintViolation $validationError) => [
-                        'property' => $validationError->getPropertyPath(),
-                        'message' => $validationError->getMessage()
-                    ],
-                    iterator_to_array($validationErrors)
-                ),
-            ];
-        }
-        $requestErrorData = $request->attributes->get('_dtoapi.request_error');
-        return [
-            'type' => 'about:blank',
-            'title' => 'Malformed request body.',
-            'status' => 400,
-            'detail' => $requestErrorData['message'] ?? 'Unknown error',
-        ];
-    }
+//    private function buildRequestErrorPayload(Request $request): array
+//    {
+//        if ($validationErrors = $request->attributes->get('_dtoapi.request_violations')) {
+//            return [
+//                'type' => 'Validation error',
+//                'title' => 'Invalid request body.',
+//                'status' => 422,
+//                'violations' => array_map(
+//                    fn(ConstraintViolation $validationError) => [
+//                        'property' => $validationError->getPropertyPath(),
+//                        'message' => $validationError->getMessage()
+//                    ],
+//                    iterator_to_array($validationErrors)
+//                ),
+//            ];
+//        }
+//        $requestErrorData = $request->attributes->get('_dtoapi.request_error');
+//        return [
+//            'type' => 'about:blank',
+//            'title' => 'Malformed request body.',
+//            'status' => 400,
+//            'detail' => $requestErrorData['message'] ?? 'Unknown error',
+//        ];
+//    }
 
     private function pickResponseMapping(array $responses, mixed $result): array
     {
