@@ -1,6 +1,6 @@
 # LiquidRazor/DtoApiBundle
 
-> **DTO-first API toolkit for Symfony 7.x**  
+> **DTO-first API toolkit for Symfony 7.x / 8.x**  
 > Attributes for request/response contracts, automatic validation, safe (de)serialization, streaming (NDJSON/SSE), OpenAPI generation, and Symfony Profiler integration.
 
 ---
@@ -27,7 +27,7 @@
 ## 🧰 Requirements
 
 - PHP **8.3+**
-- Symfony **7.0+**
+- Symfony **7.0** or **8.0**
 - packages: (already present in composer.json)
   - `ext-json`
   - `symfony/dependency-injection`
