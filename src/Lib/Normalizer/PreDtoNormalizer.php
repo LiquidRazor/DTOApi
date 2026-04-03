@@ -24,19 +24,23 @@ final class PreDtoNormalizer
     /** @var callable[] list of handlers: fn(mixed $v, callable $recurse): mixed|PreDtoNoMatch */
     private array $handlers = [];
 
-    public function __construct(
-        private readonly array $opts = [
-            'deep' => true,
-            'maxDepth' => 8,
-            'includeNull' => true,
-            'asStdClass' => true,
-            'dateFormat' => DATE_ATOM,
-            'maxTraverse' => 10_000, // safety valve
-            'propertyFilter' => null, // fn(string $name, mixed $value, object $obj): bool
-            'nameTransform' => null,  // fn(string $name): string
-        ]
-    )
+    private const array DEFAULTS = [
+        'deep' => true,
+        'maxDepth' => 8,
+        'includeNull' => true,
+        'asStdClass' => true,
+        'dateFormat' => DATE_ATOM,
+        'maxTraverse' => 10_000, // safety valve
+        'propertyFilter' => null, // fn(string $name, mixed $value, object $obj): bool
+        'nameTransform' => null,  // fn(string $name): string
+    ];
+
+    private readonly array $opts;
+
+    public function __construct(array $opts = [])
     {
+        $this->opts = array_replace(self::DEFAULTS, $opts);
+
         // built-ins first, very inexpensive checks
         $this->registerHandler(function ($v, $recurse) {
             // Scalars/null
