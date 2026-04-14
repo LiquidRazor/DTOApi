@@ -36,7 +36,7 @@ final readonly class ExceptionSubscriber implements EventSubscriberInterface
         $req = $event->getRequest();
 
         // 1) Decide status
-        $status = $e instanceof HttpExceptionInterface ? $e->getStatusCode() : 500;
+        $status = $this->resolveStatusCode($e);
 
         // 2) Log everything relevant
         $meta = (array) $req->attributes->get('_dtoapi.meta', []);
@@ -108,6 +108,34 @@ final readonly class ExceptionSubscriber implements EventSubscriberInterface
             }
         }
         return null;
+    }
+
+    /**
+     * Maps well-known exception types to their correct HTTP status codes.
+     *
+     * Symfony's security exceptions ({@see \Symfony\Component\Security\Core\Exception\AccessDeniedException},
+     * {@see \Symfony\Component\Security\Core\Exception\AuthenticationException}) do not implement
+     * {@see HttpExceptionInterface}, so a plain `instanceof` check would misclassify them as 500.
+     *
+     * The FQCN strings are used intentionally so that this bundle works without
+     * a hard dependency on {@code symfony/security-core}.
+     */
+    private function resolveStatusCode(Throwable $e): int
+    {
+        if ($e instanceof HttpExceptionInterface) {
+            return $e->getStatusCode();
+        }
+
+        // is_a() with string FQCNs so this bundle works without symfony/security-core.
+        if (is_a($e, 'Symfony\Component\Security\Core\Exception\AccessDeniedException')) {
+            return Response::HTTP_FORBIDDEN;
+        }
+
+        if (is_a($e, 'Symfony\Component\Security\Core\Exception\AuthenticationException')) {
+            return Response::HTTP_UNAUTHORIZED;
+        }
+
+        return 500;
     }
 
     private function buildErrorPayload(Throwable $e, int $status, string $uri): array
